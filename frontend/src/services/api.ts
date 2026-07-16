@@ -4,7 +4,7 @@
  * No Mock fallback. Structured ApiError with error_code on failures.
  */
 
-import type { HealthResponse, Task, TaskConfig, TaskListItem } from '../types';
+import type { HealthResponse, Task, TaskConfig, TaskListItem, AIServicesStatus, RepairStatus } from '../types';
 import { API_BASE_URL } from '../config/api';
 
 /* ── Error types ── */
@@ -87,8 +87,9 @@ export async function healthCheck(): Promise<HealthResponse> {
     if (e instanceof ApiError && e.code === 'NETWORK_ERROR') {
       return {
         status: 'error', mode: 'real',
-        ollama: { available: false, model: '', model_present: false, last_error: null }, comfyui: { available: false, state: 'unavailable', base_url: '', workflow_available: false, checkpoint_available: false, generation_ready: false, checkpoint: '', last_error: null, error_code: null, owned: false, pid: null, health_endpoint: null },
-        piper: { available: false, voice_a: false, voice_b: false },
+        ollama: { available: false, model: '', model_present: false, last_error: null },
+        comfyui: { available: false, status: 'unavailable', state: 'unavailable', base_url: '', api_available: false, workflow_available: false, workflow_path: '', checkpoint_available: false, checkpoint: '', checkpoint_path: '', checkpoint_size: null, generation_ready: false, test_generation: false, missing_models: [], missing_nodes: [], last_error: null, error_code: null, owned: false, pid: null, health_endpoint: null },
+        piper: { available: false, status: 'stopped', executable_available: false, executable_path: '', voice_a: false, voice_b: false, voice_a_path: '', voice_b_path: '', voice_a_json_exists: false, voice_b_json_exists: false, test_synthesis: false, missing_voices: [], last_error: null },
         whisper: { available: false, model: '' },
         ffmpeg: { available: false },
       };
@@ -262,4 +263,18 @@ export function getComfyUIStatus(): Promise<ComfyUIStatus> {
 
 export function startComfyUI(): Promise<ComfyUIStatus> {
   return _fetch(`${API_BASE_URL}/api/v1/services/comfyui/start`, { method: 'POST' }, 300_000);
+}
+
+/* ── AI Services (repair) ── */
+
+export function getAIServicesStatus(): Promise<AIServicesStatus> {
+  return _fetch(`${API_BASE_URL}/api/v1/services/ai/status`);
+}
+
+export function triggerAIRepair(): Promise<{ ok: boolean; message: string; job_id: string; log_file: string }> {
+  return _fetch(`${API_BASE_URL}/api/v1/services/ai/repair`, { method: 'POST' }, 10000);
+}
+
+export function getAIRepairStatus(): Promise<RepairStatus> {
+  return _fetch(`${API_BASE_URL}/api/v1/services/ai/repair/status`);
 }

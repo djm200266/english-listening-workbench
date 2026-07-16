@@ -367,8 +367,63 @@ export interface HealthResponse {
   status: string;
   mode: string;
   ollama: { available: boolean; model: string; model_present: boolean; last_error: string | null };
-  comfyui: { available: boolean; state: string; base_url: string; workflow_available: boolean; checkpoint_available: boolean; generation_ready: boolean; checkpoint: string; last_error: string | null; error_code: string | null; owned: boolean; pid: number | null; health_endpoint: string | null };
-  piper: { available: boolean; voice_a: boolean; voice_b: boolean };
+  comfyui: {
+    available: boolean;
+    status: string;          // "ready" | "degraded" | "starting" | "stopped" | "failed"
+    state?: string;          // legacy alias for status
+    base_url: string;
+    api_available: boolean;
+    workflow_available: boolean;
+    workflow_path: string;
+    checkpoint: string;
+    checkpoint_available: boolean;
+    checkpoint_path: string;
+    checkpoint_size: number | null;
+    generation_ready: boolean;
+    test_generation: boolean;
+    missing_models: string[];
+    missing_nodes: string[];
+    owned: boolean;
+    pid: number | null;
+    health_endpoint: string | null;
+    last_error: string | null;
+    error_code: string | null;
+  };
+  piper: {
+    available: boolean;
+    status: string;           // "ready" | "degraded" | "stopped" | "failed"
+    executable_available: boolean;
+    executable_path: string;
+    voice_a: boolean;
+    voice_b: boolean;
+    voice_a_path: string;
+    voice_b_path: string;
+    voice_a_json_exists: boolean;
+    voice_b_json_exists: boolean;
+    test_synthesis: boolean;
+    missing_voices: string[];
+    last_error: string | null;
+  };
   whisper: { available: boolean; model: string };
   ffmpeg: { available: boolean };
+}
+
+export interface AIServicesStatus {
+  overall: string;
+  mode: string;
+  piper: HealthResponse['piper'];
+  comfyui: HealthResponse['comfyui'];
+}
+
+export interface RepairStatus {
+  job_id: string | null;
+  status: string;
+  stage: string;
+  stage_index: number;
+  total_stages: number;
+  message: string;
+  started_at: string | null;
+  completed_at: string | null;
+  log_file: string;
+  stages: Array<{ name: string; completed: boolean; current: boolean }>;
 }

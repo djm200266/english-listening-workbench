@@ -23,6 +23,7 @@ from api.export_routes import router as export_router
 from api.version_routes import router as version_router
 from api.diagnostics_routes import router as diagnostics_router
 from api.comfyui_routes import router as comfyui_router
+from api.ai_repair_routes import router as ai_repair_router
 from api import router as task_router, set_task_service
 from config import load_config, get_mode, get_config, is_cloudstudio
 from repositories import JsonTaskRepository
@@ -107,6 +108,7 @@ app.include_router(export_router)
 app.include_router(version_router)
 app.include_router(diagnostics_router)
 app.include_router(comfyui_router)
+app.include_router(ai_repair_router)
 
 
 def _is_api_path(path: str) -> bool:

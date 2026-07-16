@@ -41,8 +41,9 @@ export default function App() {
     } catch {
       setHealth({
         status: 'error', mode: 'real',
-        ollama: { available: false, model: '', model_present: false, last_error: null }, comfyui: { available: false, state: 'unavailable', base_url: '', workflow_available: false, checkpoint_available: false, generation_ready: false, checkpoint: '', last_error: null, error_code: null, owned: false, pid: null, health_endpoint: null },
-        piper: { available: false, voice_a: false, voice_b: false },
+        ollama: { available: false, model: '', model_present: false, last_error: null },
+        comfyui: { available: false, status: 'unavailable', state: 'unavailable', base_url: '', api_available: false, workflow_available: false, workflow_path: '', checkpoint_available: false, checkpoint: '', checkpoint_path: '', checkpoint_size: null, generation_ready: false, test_generation: false, missing_models: [], missing_nodes: [], last_error: null, error_code: null, owned: false, pid: null, health_endpoint: null },
+        piper: { available: false, status: 'stopped', executable_available: false, executable_path: '', voice_a: false, voice_b: false, voice_a_path: '', voice_b_path: '', voice_a_json_exists: false, voice_b_json_exists: false, test_synthesis: false, missing_voices: [], last_error: null },
         whisper: { available: false, model: '' },
         ffmpeg: { available: false },
       });
