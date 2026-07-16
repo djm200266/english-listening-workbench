@@ -1,0 +1,49 @@
+# ── Environment ──
+.env
+.env.*
+!.env.example
+
+# ── Backend ──
+backend/data/
+backend/__pycache__/
+backend/**/__pycache__/
+*.pyc
+*.pyo
+*.db
+*.sqlite
+
+# ── Logs ──
+logs/
+*.log
+
+# ── Frontend ──
+frontend/dist/
+frontend/node_modules/
+node_modules/
+
+# ── Large models ──
+*.gguf
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.onnx
+
+# ── Generated content ──
+生成图片/
+生成音频/
+导出文件/
+
+# ── IDE ──
+.vscode/settings.json
+.idea/
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Python virtual environments ──
+.venv/
+venv/
+env/

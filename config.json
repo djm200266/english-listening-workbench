@@ -1,0 +1,122 @@
+{
+  "mode": "real",
+  "frontend": {
+    "port": 5173,
+    "apiBaseUrl": "http://127.0.0.1:8000"
+  },
+  "backend": {
+    "port": 8000,
+    "corsOrigins": [
+      "http://127.0.0.1:5173",
+      "http://localhost:5173"
+    ]
+  },
+  "ollama": {
+    "baseUrl": "http://127.0.0.1:11434",
+    "model": "qwen3:4b-instruct",
+    "timeoutSec": 300,
+    "maxRetries": 1
+  },
+  "comfyui": {
+    "enabled": true,
+    "autoStart": true,
+    "stopOnBackendExit": false,
+    "baseUrl": "http://127.0.0.1:8188",
+    "installRoot": "G:\\ComfyUI_windows_portable",
+    "pythonExe": "G:\\ComfyUI_windows_portable\\python_embeded\\python.exe",
+    "mainPy": "G:\\ComfyUI_windows_portable\\ComfyUI\\main.py",
+    "startScript": "G:\\ComfyUI_windows_portable\\run_nvidia_gpu.bat",
+    "workflowPath": "backend/workflows/sdxl_cartoon_api.fixed.json",
+    "checkpoint": "sd_xl_base_1.0.safetensors",
+    "startupTimeoutSec": 180,
+    "generationTimeoutSec": 300,
+    "width": 1024,
+    "height": 1024,
+    "batchSize": 1,
+    "steps": 30,
+    "cfg": 8,
+    "sampler": "euler",
+    "scheduler": "normal",
+    "timeoutSec": 120,
+    "pollIntervalSec": 2,
+    "maxRetries": 1,
+    "styles": [
+      "cartoon",
+      "children_book",
+      "flat",
+      "watercolor",
+      "realistic"
+    ]
+  },
+  "piper": {
+    "executable": "D:\\english_eval\\whisper_env\\Scripts\\piper.exe",
+    "voices": {
+      "female": "en_US-lessac-medium",
+      "male": "en_US-ryan-medium"
+    },
+    "voice_dir": "D:\\english_eval\\piper_voices",
+    "timeoutSec": 30,
+    "pauseSeconds": 0.4
+  },
+  "whisper": {
+    "model": "base.en",
+    "pythonPath": "D:\\english_eval\\whisper_env\\Scripts\\python.exe",
+    "timeoutSec": 60
+  },
+  "assets": {
+    "rootDir": "D:\\english_eval\\assets"
+  },
+  "evaluation": {
+    "weights": {
+      "textQuality": 0.2,
+      "audioQuality": 0.2,
+      "imageQuality": 0.15,
+      "questionQuality": 0.2,
+      "crossModal": 0.25
+    },
+    "passThreshold": 80,
+    "ruleWeight": 0.35,
+    "semanticWeight": 0.35,
+    "visualWeight": 0.30,
+    "semanticEnabled": true,
+    "semanticTimeoutSec": 180,
+    "semanticMaxRetries": 1,
+    "semanticPromptVersion": "v1",
+    "visualEnabled": true,
+    "visualModel": "qwen3-vl:4b",
+    "visualTimeoutSec": 180,
+    "visualMaxRetries": 1,
+    "visualPromptVersion": "v1",
+    "visualMaxImageSize": 1024,
+    "visualKeepAlive": "30m",
+    "visualStage1TimeoutSec": 180,
+    "visualStage2TimeoutSec": 90,
+    "visualModelSwitchTimeoutSec": 60,
+    "visualTotalTimeoutSec": 300,
+    "visualSingleModel": false,
+    "audioDurationBiasThreshold": 0.2,
+    "badCasePrecisionTarget": 0.8,
+    "badCaseRecallTarget": 0.85,
+    "s3s4RecallTarget": 0.95
+  },
+  "generation": {
+    "dialogueTurnsMin": 6,
+    "dialogueTurnsMax": 12,
+    "dialogueTurnsDefault": 8,
+    "audioDurationMinSec": 30,
+    "audioDurationMaxSec": 90,
+    "audioDurationDefaultSec": 50,
+    "questionCountMin": 2,
+    "questionCountMax": 5,
+    "questionCountDefault": 3,
+    "speakerCount": 2,
+    "speechRateOptions": [
+      "slow",
+      "normal"
+    ],
+    "speechRateDefault": "normal"
+  },
+  "grade": "grade_7",
+  "lessonType": "listening_speaking",
+  "questionType": "single_choice"
+}
