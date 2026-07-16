@@ -190,6 +190,47 @@ export function generateQuestions(taskId: string): Promise<any> {
   return _fetch(`${API_BASE_URL}/api/v1/tasks/${encodeURIComponent(taskId)}/questions/generate`, { method: 'POST' }, 180_000);
 }
 
+/* ── Asset Validation ── */
+
+export interface AssetValidationResult {
+  task_id: string;
+  all_valid: boolean;
+  image: {
+    status: string;
+    file_exists: boolean;
+    file_path: string;
+    file_size: number;
+    image_url: string;
+    can_open: boolean;
+    last_error: string | null;
+    stored_status?: string;
+  };
+  audio: {
+    status: string;
+    file_exists: boolean;
+    file_path: string;
+    file_size: number;
+    audio_url: string;
+    duration_sec: number;
+    mime_type: string;
+    wav_valid: boolean;
+    last_error: string | null;
+    stored_status?: string;
+  };
+  questions: {
+    status: string;
+    json_file_exists: boolean;
+    question_count: number;
+    has_options: boolean;
+    has_answers: boolean;
+    last_error: string | null;
+  };
+}
+
+export function validateTaskAssets(taskId: string): Promise<AssetValidationResult> {
+  return _fetch(`${API_BASE_URL}/api/v1/tasks/${encodeURIComponent(taskId)}/assets/validate`);
+}
+
 /* ── Prompt Assistant ── */
 
 export interface PromptAssistResult { success: boolean; raw_input: string; enhanced_prompt: string; model?: string; timing?: { queue_ms: number; generation_ms: number; total_ms: number; retry_count: number; }; }

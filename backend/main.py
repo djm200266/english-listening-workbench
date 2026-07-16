@@ -116,25 +116,30 @@ def _is_api_path(path: str) -> bool:
     return path == "api" or path.startswith("api/")
 
 
+def _is_media_path(path: str) -> bool:
+    """Check if a path is a media asset — starts with 'media/'."""
+    return path.startswith("media/")
+
+
 def _serve_static_file(full_path: str) -> FileResponse | None:
-    """Try to serve a static file from frontend/dist or data assets directory.
-    Priority: 1) frontend Vite output  2) generated assets (images, audio).
-    Returns None if file not found in either location.
+    """Try to serve a static file from frontend/dist directory only.
+    Media files are handled by the /media mount — this is for Vite build output.
+    Returns None if file not found.
     """
-    # 1. Frontend Vite output (JS, CSS, other build artifacts)
     if FRONTEND_DIST.is_dir():
         fp = FRONTEND_DIST / full_path
         if fp.is_file():
             return FileResponse(fp)
-
-    # 2. Generated data assets (images, audio — stored as /assets/G7_DIR_*/...)
-    assets_root_str = str(assets_root)
-    if os.path.isdir(assets_root_str):
-        dp = Path(assets_root_str) / full_path
-        if dp.is_file():
-            return FileResponse(dp)
-
     return None
+
+
+# ── Mount /media for generated assets (images, audio) ──
+# This must be BEFORE the SPA catch-all so /media/* paths are intercepted.
+# Works for both Cloud Studio and Windows.
+_assets_root_str = str(assets_root)
+if os.path.isdir(_assets_root_str):
+    app.mount("/media", StaticFiles(directory=_assets_root_str), name="media_assets")
+    print(f"[main] Mounted /media → {_assets_root_str}")
 
 
 if is_cloudstudio():
@@ -142,10 +147,16 @@ if is_cloudstudio():
         # ── SPA catch-all: frontend is built, serve it ──
         @app.get("/{full_path:path}")
         async def serve_spa(full_path: str):
-            """Serve static files or SPA index.html. API routes already matched above."""
+            """Serve static files or SPA index.html.
+            API routes and /media mount already matched above."""
             if _is_api_path(full_path):
                 from fastapi.responses import PlainTextResponse
                 return PlainTextResponse("Not Found", status_code=404)
+
+            # Media paths that slipped through (file not found) → 404, not index.html
+            if _is_media_path(full_path):
+                from fastapi.responses import PlainTextResponse
+                return PlainTextResponse("Media file not found", status_code=404)
 
             file_resp = _serve_static_file(full_path)
             if file_resp is not None:
@@ -170,12 +181,16 @@ if is_cloudstudio():
 
         @app.get("/{full_path:path}")
         async def serve_spa_missing(full_path: str):
-            """API routes already matched. Non-API routes get 503 when dist is missing."""
+            """API routes and /media mount already matched. Non-API/Non-media → 503."""
             if _is_api_path(full_path):
                 from fastapi.responses import PlainTextResponse
                 return PlainTextResponse("Not Found", status_code=404)
 
-            # Try to serve from data assets anyway
+            # Media paths that slipped through → 404
+            if _is_media_path(full_path):
+                from fastapi.responses import PlainTextResponse
+                return PlainTextResponse("Media file not found", status_code=404)
+
             file_resp = _serve_static_file(full_path)
             if file_resp is not None:
                 return file_resp
@@ -187,10 +202,9 @@ if is_cloudstudio():
             """Root path: 503 because frontend is not built."""
             return JSONResponse(_DIST_MISSING_MSG, status_code=503)
 else:
-    # Windows / dev: mount assets directory at /assets/ as before
-    assets_root_str = str(assets_root)
-    if os.path.isdir(assets_root_str):
-        app.mount("/assets", StaticFiles(directory=assets_root_str), name="data_assets")
+    # Windows / dev: also mount /assets for backward compatibility
+    if os.path.isdir(_assets_root_str):
+        app.mount("/assets", StaticFiles(directory=_assets_root_str), name="data_assets")
 
 
 if __name__ == "__main__":

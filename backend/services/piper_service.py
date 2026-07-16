@@ -50,7 +50,7 @@ def _get_timeout() -> int:
 
 def _assets_dir(task_id: str) -> Path:
     root = get_config().get("assets", {}).get("rootDir", "storage")
-    d = Path(root) / task_id
+    d = Path(root) / task_id / "audio"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -278,12 +278,12 @@ def generate_audio(script: DialogueScript, task_id: str, *,
 def build_audio_asset(result: PiperGenerationResult, task_id: str) -> AudioAsset:
     """Build an AudioAsset model from generation result."""
     now = _now_iso()
-    # Make path relative for URL serving
+    # Make path relative for URL serving via /media/ mount
     assets_root = get_config().get("assets", {}).get("rootDir", "storage")
     rel_path = os.path.relpath(result.output_path, assets_root).replace("\\", "/")
     return AudioAsset(
         audio_id=result.audio_id,
-        audio_url=f"/assets/{rel_path}",
+        audio_url=f"/media/{rel_path}",
         audio_duration_actual_sec=result.duration_sec,
         audio_source_script_version=result.source_script_version,
         speaker_profiles={

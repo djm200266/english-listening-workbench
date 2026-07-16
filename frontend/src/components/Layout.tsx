@@ -146,7 +146,7 @@ function ComfyUITag({ backendOnline, health }: { backendOnline: boolean; health:
     return <ServiceTag label="ComfyUI" state="unknown" tooltip="后端离线，状态未知" />;
   }
 
-  // Prefer 'status' field (new API), fall back to 'state' (legacy)
+  // Use 'status' field from new health API
   const status: string = comfyui?.status || comfyui?.state || 'stopped';
   const stateMap: Record<string, 'on' | 'off' | 'starting' | 'degraded' | 'failed'> = {
     ready: 'on',

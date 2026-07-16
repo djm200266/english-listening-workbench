@@ -267,7 +267,7 @@ def generate_image(task_id: str, config: TaskConfig, script: DialogueScript | No
         latency = int((time.perf_counter() - t0) * 1000)
         assets_root = get_config().get("assets", {}).get("rootDir", "storage")
         rel = os.path.relpath(output_path, assets_root).replace("\\", "/")
-        img_url = f"/assets/{rel}"
+        img_url = f"/media/{rel}"
         return ImageGenerationResult(
             image_id=f"IMG_{task_id}", image_path=output_path, image_url=img_url,
             prompt="deterministic_map", negative_prompt="", seed=0,
@@ -359,7 +359,7 @@ def generate_image(task_id: str, config: TaskConfig, script: DialogueScript | No
         json.dump(meta, f, indent=2, ensure_ascii=False)
 
     return ImageGenerationResult(
-        image_id=f"IMG_{task_id}", image_path=output_path, image_url=f"/assets/{rel}",
+        image_id=f"IMG_{task_id}", image_path=output_path, image_url=f"/media/{rel}",
         prompt=final_positive, negative_prompt=final_negative, seed=seed,
         style=raw_style, width=width, height=height,
         source_script_version=src_ver, generation_latency_ms=latency,

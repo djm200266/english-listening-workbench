@@ -6,6 +6,7 @@
 #   bash deploy/cloudstudio/start-background.sh            启动并等待就绪
 #   bash deploy/cloudstudio/start-background.sh --status   查看详细状态
 #   bash deploy/cloudstudio/start-background.sh --wait     等待现有任务就绪
+#   bash deploy/cloudstudio/start-background.sh --recover  工作空间重连后恢复
 #   bash deploy/cloudstudio/stop-cloudstudio.sh            停止所有服务
 # ============================================================================
 set -uo pipefail
@@ -372,6 +373,81 @@ start_process() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
+# recover — workspace reconnection: check services, clean stale PIDs, restart missing
+# ══════════════════════════════════════════════════════════════════════
+recover_services() {
+    echo "[recover] 检查服务状态..."
+
+    # Clean stale PIDs
+    for pf in "$PID_FILE" "$LOCK_FILE" "$LOG_DIR/fastapi.pid" "$LOG_DIR/ollama.pid" "$LOG_DIR/comfyui.pid"; do
+        if [ -f "$pf" ]; then
+            local old_pid; old_pid=$(cat "$pf" 2>/dev/null || echo "")
+            if [ -n "$old_pid" ] && ! kill -0 "$old_pid" 2>/dev/null; then
+                echo "[recover] 清理过期 PID 文件: $pf ($old_pid)"
+                rm -f "$pf"
+            fi
+        fi
+    done
+
+    # Check FastAPI (port 8000)
+    if _http_ok "http://127.0.0.1:8000/api/ping" 2; then
+        echo "[recover] FastAPI: running ✓"
+    else
+        echo "[recover] FastAPI: offline — 尝试重启..."
+        export APP_ENV=cloudstudio
+        export PYTHONPATH="$PROJECT_ROOT/backend:$PROJECT_ROOT"
+        local venv_dir="/workspace/.venv"
+        if [ -f "$venv_dir/bin/python" ]; then
+            source "$venv_dir/bin/activate"
+            nohup "$venv_dir/bin/python" -m uvicorn main:app --host 0.0.0.0 --port 8000 --log-level info \
+                &> "$LOG_DIR/fastapi.log" &
+            local new_pid=$!
+            echo "$new_pid" > "$LOG_DIR/fastapi.pid"
+            echo "[recover] FastAPI 重启中 (PID: $new_pid)..."
+            _wait_http "http://127.0.0.1:8000/api/ping" "FastAPI" 60 && echo "[recover] FastAPI: 已恢复 ✓" || echo "[recover] FastAPI: 启动失败 ✗"
+        else
+            echo "[recover] FastAPI: 虚拟环境不存在，请先运行 one-click-cloudstudio.sh"
+        fi
+    fi
+
+    # Check Ollama (port 11434)
+    if _http_ok "http://127.0.0.1:11434/api/tags" 2; then
+        echo "[recover] Ollama: running ✓"
+    else
+        echo "[recover] Ollama: offline — 尝试重启..."
+        if command -v ollama &>/dev/null; then
+            ollama serve &> "$LOG_DIR/ollama.log" &
+            local o_pid=$!
+            echo "$o_pid" > "$LOG_DIR/ollama.pid"
+            sleep 3
+            _http_ok "http://127.0.0.1:11434/api/tags" 3 && echo "[recover] Ollama: 已恢复 ✓" || echo "[recover] Ollama: 未恢复（可能需要更长时间）"
+        else
+            echo "[recover] Ollama: 未安装"
+        fi
+    fi
+
+    # Check ComfyUI (port 8188)
+    if _http_ok "http://127.0.0.1:8188/system_stats" 2; then
+        echo "[recover] ComfyUI: running ✓"
+    else
+        echo "[recover] ComfyUI: offline — 尝试重启..."
+        local comfyui_dir="${COMFYUI_DIR:-/workspace/ComfyUI}"
+        if [ -f "$comfyui_dir/main.py" ] && [ -f "/workspace/.venv/bin/python" ]; then
+            "/workspace/.venv/bin/python" -s "$comfyui_dir/main.py" --listen 127.0.0.1 --port 8188 &> "$LOG_DIR/comfyui.log" &
+            local c_pid=$!
+            echo "$c_pid" > "$LOG_DIR/comfyui.pid"
+            echo "[recover] ComfyUI 重启中 (PID: $c_pid)..."
+            _wait_http "http://127.0.0.1:8188/system_stats" "ComfyUI" 180 && echo "[recover] ComfyUI: 已恢复 ✓" || echo "[recover] ComfyUI: 启动超时（可能仍需初始化）"
+        else
+            echo "[recover] ComfyUI: 未安装"
+        fi
+    fi
+
+    echo ""
+    echo "[recover] 恢复检查完成。运行 --status 查看详细状态。"
+}
+
+# ══════════════════════════════════════════════════════════════════════
 # main — parse arguments and dispatch
 # ══════════════════════════════════════════════════════════════════════
 main() {
@@ -379,10 +455,11 @@ main() {
 
     # Normalize action
     case "$action" in
-        --status|status) action="status" ;;
-        --wait|wait)     action="wait" ;;
-        --start|start|"") action="start" ;;
-        *) echo "用法: bash $0 [--status|--wait]"; exit 1 ;;
+        --status|status)   action="status" ;;
+        --wait|wait)       action="wait" ;;
+        --recover|recover) action="recover" ;;
+        --start|start|"")  action="start" ;;
+        *) echo "用法: bash $0 [--status|--wait|--recover]"; exit 1 ;;
     esac
 
     mkdir -p "$LOG_DIR"
@@ -393,6 +470,10 @@ main() {
             ;;
         wait)
             wait_for_ready
+            ;;
+        recover)
+            recover_services
+            show_status
             ;;
         start)
             start_process

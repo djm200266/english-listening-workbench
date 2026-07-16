@@ -127,12 +127,22 @@ def transcribe_audio(req: AudioTranscribeRequest):
     from pathlib import Path
     from config import get_config
     assets_root = get_config().get("assets", {}).get("rootDir", "storage")
-    audio_path = str(Path(assets_root) / req.task_id / Path(task.audio.audio_url.replace("/assets/", "")).name) if task.audio.audio_url else ""
+    # audio_url is like "/media/G7_DIR_.../audio/dialogue_v1_0.wav"
+    audio_path = ""
+    if task.audio and task.audio.audio_url:
+        url_path = task.audio.audio_url.replace("/media/", "").replace("/assets/", "")
+        candidate = Path(assets_root) / url_path
+        if candidate.exists():
+            audio_path = str(candidate)
 
-    # Fallback: find the WAV file
+    # Fallback: find the WAV file in new audio/ subdirectory or old task root
     if not audio_path or not Path(audio_path).exists():
         assets_dir = Path(assets_root) / req.task_id
-        wavs = list(assets_dir.glob("dialogue_*.wav"))
+        # New location: audio/ subdirectory
+        wavs = list((assets_dir / "audio").glob("dialogue_*.wav"))
+        if not wavs:
+            # Old location: task root directory (backward compat)
+            wavs = list(assets_dir.glob("dialogue_*.wav"))
         if wavs:
             audio_path = str(wavs[0])
 
@@ -196,10 +206,12 @@ def evaluate_audio(req: AudioEvaluateRequest):
     if task.audio is None:
         raise HTTPException(status_code=404, detail={"error_code": "AUDIO_NOT_FOUND"})
 
-    # Get audio path
+    # Get audio path (check new audio/ subdirectory first, then old location)
     assets_root = get_config().get("assets", {}).get("rootDir", "storage")
     assets_dir = Path(assets_root) / req.task_id
-    wavs = list(assets_dir.glob("dialogue_*.wav"))
+    wavs = list((assets_dir / "audio").glob("dialogue_*.wav"))
+    if not wavs:
+        wavs = list(assets_dir.glob("dialogue_*.wav"))
     if not wavs:
         raise HTTPException(status_code=404, detail={
             "error_code": "AUDIO_FILE_MISSING",
