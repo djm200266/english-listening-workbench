@@ -89,10 +89,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Static files: generated assets (both Windows /assets/ and Cloud Studio catch-all) ──
+# ── Resolve paths robustly (not dependent on CWD) ──
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+FRONTEND_DIST = _PROJECT_ROOT / "frontend" / "dist"
 assets_root = cfg.get("assets", {}).get("rootDir", "storage")
-FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
-FRONTEND_ASSETS = FRONTEND_DIST / "assets"
 
 # ── API routers (registered BEFORE static/catch-all so they take priority) ──
 app.include_router(health_router)
@@ -110,8 +110,8 @@ app.include_router(comfyui_router)
 
 
 def _is_api_path(path: str) -> bool:
-    """Check if a path is an API endpoint (already handled by routers above)."""
-    return path.startswith("api/")
+    """Check if a path is an API endpoint — starts with 'api/' or is just 'api'."""
+    return path == "api" or path.startswith("api/")
 
 
 def _serve_static_file(full_path: str) -> FileResponse | None:
@@ -126,40 +126,69 @@ def _serve_static_file(full_path: str) -> FileResponse | None:
             return FileResponse(fp)
 
     # 2. Generated data assets (images, audio — stored as /assets/G7_DIR_*/...)
-    if os.path.isdir(assets_root):
-        dp = Path(assets_root) / full_path
+    assets_root_str = str(assets_root)
+    if os.path.isdir(assets_root_str):
+        dp = Path(assets_root_str) / full_path
         if dp.is_file():
             return FileResponse(dp)
 
     return None
 
 
-if is_cloudstudio() and FRONTEND_DIST.is_dir():
-    # SPA catch-all: serve frontend, Vite assets, and generated data from a single handler
-    @app.get("/{full_path:path}")
-    async def serve_spa(full_path: str):
-        """Serve static files (frontend + generated assets) or SPA index.html."""
-        # Don't intercept API routes
-        if _is_api_path(full_path):
-            from fastapi.responses import PlainTextResponse
-            return PlainTextResponse("Not Found", status_code=404)
+if is_cloudstudio():
+    if FRONTEND_DIST.is_dir() and (FRONTEND_DIST / "index.html").is_file():
+        # ── SPA catch-all: frontend is built, serve it ──
+        @app.get("/{full_path:path}")
+        async def serve_spa(full_path: str):
+            """Serve static files or SPA index.html. API routes already matched above."""
+            if _is_api_path(full_path):
+                from fastapi.responses import PlainTextResponse
+                return PlainTextResponse("Not Found", status_code=404)
 
-        # Try static files from frontend/dist or data assets
-        file_resp = _serve_static_file(full_path)
-        if file_resp is not None:
-            return file_resp
+            file_resp = _serve_static_file(full_path)
+            if file_resp is not None:
+                return file_resp
 
-        # SPA fallback: index.html for client-side routing
-        return FileResponse(FRONTEND_DIST / "index.html")
+            return FileResponse(FRONTEND_DIST / "index.html")
 
-    # Root handler
-    @app.get("/")
-    async def serve_root():
-        return FileResponse(FRONTEND_DIST / "index.html")
+        @app.get("/")
+        async def serve_root():
+            return FileResponse(FRONTEND_DIST / "index.html")
+
+    else:
+        # ── frontend/dist missing: return 503 for web routes, keep API working ──
+        from fastapi.responses import JSONResponse
+
+        _DIST_MISSING_MSG = {
+            "status": "frontend_not_built",
+            "message": "前端未构建。请先运行: bash deploy/cloudstudio/setup-cloudstudio.sh",
+            "frontend_dist": str(FRONTEND_DIST),
+            "index_html_exists": False,
+        }
+
+        @app.get("/{full_path:path}")
+        async def serve_spa_missing(full_path: str):
+            """API routes already matched. Non-API routes get 503 when dist is missing."""
+            if _is_api_path(full_path):
+                from fastapi.responses import PlainTextResponse
+                return PlainTextResponse("Not Found", status_code=404)
+
+            # Try to serve from data assets anyway
+            file_resp = _serve_static_file(full_path)
+            if file_resp is not None:
+                return file_resp
+
+            return JSONResponse(_DIST_MISSING_MSG, status_code=503)
+
+        @app.get("/")
+        async def serve_root_missing():
+            """Root path: 503 because frontend is not built."""
+            return JSONResponse(_DIST_MISSING_MSG, status_code=503)
 else:
     # Windows / dev: mount assets directory at /assets/ as before
-    if os.path.isdir(assets_root):
-        app.mount("/assets", StaticFiles(directory=assets_root), name="data_assets")
+    assets_root_str = str(assets_root)
+    if os.path.isdir(assets_root_str):
+        app.mount("/assets", StaticFiles(directory=assets_root_str), name="data_assets")
 
 
 if __name__ == "__main__":

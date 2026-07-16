@@ -30,7 +30,10 @@ def load_config(path: str | None = None) -> dict[str, Any]:
 
 
 def _apply_cloudstudio_overrides() -> None:
-    """Override paths and URLs from environment variables (Cloud Studio / Linux)."""
+    """Override paths and URLs from environment variables (Cloud Studio / Linux).
+    Environment variable values take priority over config.json.
+    Windows-specific paths are explicitly wiped.
+    """
     env = os.environ
 
     # Base directories
@@ -53,23 +56,31 @@ def _apply_cloudstudio_overrides() -> None:
     # Ollama
     _CONFIG.setdefault("ollama", {})["baseUrl"] = ollama_url
 
-    # ComfyUI
+    # ComfyUI — fully replace Windows paths with Linux defaults
     cf = _CONFIG.setdefault("comfyui", {})
     cf["baseUrl"] = comfyui_url
     cf["installRoot"] = comfyui_dir
-    cf["pythonExe"] = ""
+    cf["pythonExe"] = ""        # explicitly blank — not python_embeded on Windows
     cf["mainPy"] = f"{comfyui_dir}/main.py"
-    cf["startScript"] = ""
+    cf["startScript"] = ""      # explicitly blank — not run_nvidia_gpu.bat
+    cf["workflowPath"] = env.get("COMFYUI_WORKFLOW_PATH",
+        cf.get("workflowPath", "backend/workflows/sdxl_cartoon_api.fixed.json"))
     cf["startupTimeoutSec"] = int(env.get("COMFYUI_STARTUP_TIMEOUT", "300"))
-    cf["autoStart"] = env.get("COMFYUI_AUTO_START", "true").lower() == "true"
+    # Auto-start only if ComfyUI is actually installed
+    cf["autoStart"] = (
+        env.get("COMFYUI_AUTO_START", "true").lower() == "true"
+        and os.path.isdir(comfyui_dir)
+        and os.path.isfile(f"{comfyui_dir}/main.py")
+    )
+    # Wipe any lingering Windows paths from config.json
+    cf.pop("startScript", None)
 
-    # Piper
+    # Piper — Linux paths
     piper_cfg = _CONFIG.setdefault("piper", {})
-    if piper_model_dir:
-        piper_cfg["voice_dir"] = piper_model_dir
+    piper_cfg["voice_dir"] = piper_model_dir
     piper_cfg["executable"] = env.get("PIPER_EXECUTABLE", "piper")
 
-    # Whisper
+    # Whisper — Linux paths
     whisper_cfg = _CONFIG.setdefault("whisper", {})
     whisper_cfg["pythonPath"] = env.get("WHISPER_PYTHON_PATH", "python3")
 
