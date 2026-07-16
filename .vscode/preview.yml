@@ -1,6 +1,6 @@
 apps:
   - port: 8000
-    run: bash deploy/cloudstudio/one-click-cloudstudio.sh
+    run: bash deploy/cloudstudio/start-background.sh --wait
     root: .
     name: 初中英语听说课AI备课助手
     autoOpen: true
