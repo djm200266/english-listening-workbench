@@ -16,10 +16,6 @@ LOG_DIR="/workspace/logs/cloudstudio"
 STATE_FILE="$LOG_DIR/startup-state.json"
 PID_FILE="$LOG_DIR/workbench.pid"
 LOCK_FILE="$LOG_DIR/workbench.lock"
-MAX_WAIT_SEC=300
-POLL_INTERVAL=3
-
-mkdir -p "$LOG_DIR"
 
 # ══════════════════════════════════════════════════════════════════════
 # UTILITY FUNCTIONS
@@ -28,7 +24,7 @@ _http_ok() { curl -sf --max-time "${2:-3}" "$1" >/dev/null 2>&1; }
 _now_iso() { date '+%Y-%m-%dT%H:%M:%S%z' 2>/dev/null || date '+%Y-%m-%d %H:%M:%S'; }
 
 _read_state() {
-    # Read a key from startup-state.json
+    # Read a key from startup-state.json.  Never crashes — returns default on any failure.
     local key="$1" default="${2:-}"
     if [ -f "$STATE_FILE" ]; then
         python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d.get('$key','$default'))" 2>/dev/null || echo "$default"
@@ -38,7 +34,6 @@ _read_state() {
 }
 
 _get_uptime() {
-    # Get uptime of a PID in human-readable form
     local pid="$1"
     if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then echo "N/A"; return; fi
     local etime; etime=$(ps -o etime= -p "$pid" 2>/dev/null | xargs || echo "?")
@@ -72,7 +67,10 @@ _check_frontend() {
     fi
 }
 
-_print_status_detail() {
+# ══════════════════════════════════════════════════════════════════════
+# show_status — detailed status of all services
+# ══════════════════════════════════════════════════════════════════════
+show_status() {
     echo ""
     echo "══════════════════════════════════════════════════════"
     echo "  English Listening Workbench — 详细状态"
@@ -96,7 +94,7 @@ _print_status_detail() {
     else
         echo "  ── 主进程 ──"
         echo "  PID:        ${MAIN_PID:-N/A} (not running)"
-        [ -f "$PID_FILE" ] && [ -n "$MAIN_PID" ] && echo "  (PID 文件存在但进程已退出 — 将自动清理)" && rm -f "$PID_FILE" "$LOCK_FILE"
+        [ -f "$PID_FILE" ] && [ -n "${MAIN_PID:-}" ] && echo "  (PID 文件存在但进程已退出 — 将自动清理)" && rm -f "$PID_FILE" "$LOCK_FILE"
     fi
 
     # ── Startup state ──
@@ -197,8 +195,10 @@ _print_status_detail() {
     echo ""
 }
 
-_auto_error_summary() {
-    # Extract error lines from workbench.log
+# ══════════════════════════════════════════════════════════════════════
+# show_error_summary — extract error lines from workbench.log
+# ══════════════════════════════════════════════════════════════════════
+show_error_summary() {
     local log="$LOG_DIR/workbench.log"
     if [ ! -f "$log" ]; then
         echo "  (无 workbench.log)"
@@ -219,32 +219,27 @@ _auto_error_summary() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# MODE: --status
+# wait_for_ready — poll until FastAPI + frontend are ready or timeout
 # ══════════════════════════════════════════════════════════════════════
-if [ "${1:-}" = "--status" ] || [ "${1:-}" = "status" ]; then
-    _print_status_detail
-    exit 0
-fi
+wait_for_ready() {
+    local max_wait="${1:-300}"
+    local interval="${2:-3}"
+    local waited=0
 
-# ══════════════════════════════════════════════════════════════════════
-# MODE: --wait
-# ══════════════════════════════════════════════════════════════════════
-if [ "${1:-}" = "--wait" ] || [ "${1:-}" = "wait" ]; then
     echo "[wait] 等待工作台就绪..."
-    echo "[wait] 最长等待: ${MAX_WAIT_SEC}s  |  检查间隔: ${POLL_INTERVAL}s"
+    echo "[wait] 最长等待: ${max_wait}s  |  检查间隔: ${interval}s"
     echo ""
 
-    WAITED=0
-    while [ $WAITED -lt $MAX_WAIT_SEC ]; do
-        # Check if main process still alive
-        local MPID=""
-        [ -f "$PID_FILE" ] && MPID=$(cat "$PID_FILE" 2>/dev/null || echo "")
+    while [ $waited -lt $max_wait ]; do
+        # ── Check if main process still alive ──
+        local mpid=""
+        [ -f "$PID_FILE" ] && mpid=$(cat "$PID_FILE" 2>/dev/null || echo "")
 
-        if [ -n "$MPID" ] && ! kill -0 "$MPID" 2>/dev/null; then
+        if [ -n "$mpid" ] && ! kill -0 "$mpid" 2>/dev/null; then
             # Process died — check if it ended successfully
             local s_stat; s_stat=$(_read_state "status" "unknown")
             if [ "$s_stat" = "ready" ] || [ "$s_stat" = "running" ]; then
-                # Script completed, services running — verify
+                # Script completed, services may still be running — verify
                 local fa; fa=$(_check_fastapi)
                 local fe; fe=$(_check_frontend)
                 if [ "$fa" = "ready" ] && [ "$fe" = "ready" ]; then
@@ -255,129 +250,155 @@ if [ "${1:-}" = "--wait" ] || [ "${1:-}" = "wait" ]; then
                     echo "  Health:  http://127.0.0.1:8000/api/health"
                     echo "  Status:  ready"
                     echo "═══════════════════════════════════════════"
-                    exit 0
+                    return 0
                 fi
             elif [ "$s_stat" = "failed" ]; then
                 echo ""
                 echo "[wait] 启动失败"
-                _auto_error_summary
-                exit 1
+                show_error_summary
+                return 1
             else
                 echo ""
-                echo "[wait] 主进程已退出 (PID $MPID)"
-                _auto_error_summary
-                exit 1
+                echo "[wait] 主进程已退出 (PID $mpid)"
+                show_error_summary
+                return 1
             fi
         fi
 
-        # Check if ready
+        # ── Check if ready ──
         local fa_now; fa_now=$(_check_fastapi)
         local fe_now; fe_now=$(_check_frontend)
 
         if [ "$fa_now" = "ready" ] && [ "$fe_now" = "ready" ]; then
             echo ""
             echo "═══════════════════════════════════════════"
-            echo "  工作台已就绪！ (等待 ${WAITED}s)"
+            echo "  工作台已就绪！ (等待 ${waited}s)"
             echo "  Web UI:  http://127.0.0.1:8000"
             echo "  Health:  http://127.0.0.1:8000/api/health"
             echo "  Status:  ready"
             echo "═══════════════════════════════════════════"
-            exit 0
+            return 0
         fi
 
-        # Show progress
+        # ── Show progress every 30 seconds ──
         local stage; stage=$(_read_state "stage" "unknown")
         local msg; msg=$(_read_state "message" "")
-        local mod=$((WAITED % 30))
-        if [ $WAITED -eq 0 ] || [ $mod -eq 0 ]; then
-            printf "  [starting] 已等待 %3d秒 | 阶段: %-24s | %s\n" "$WAITED" "$stage" "${msg:-...}"
+        local mod=$((waited % 30))
+        if [ $waited -eq 0 ] || [ $mod -eq 0 ]; then
+            printf "  [starting] 已等待 %3d秒 | 阶段: %-24s | %s\n" "$waited" "$stage" "${msg:-...}"
         fi
 
-        sleep $POLL_INTERVAL
-        WAITED=$((WAITED + POLL_INTERVAL))
+        sleep "$interval"
+        waited=$((waited + interval))
     done
 
-    # Timeout
+    # ── Timeout ──
     echo ""
-    echo "[wait] 超时 (${MAX_WAIT_SEC}s)"
+    echo "[wait] 超时 (${max_wait}s)"
     local fa_end; fa_end=$(_check_fastapi)
     if [ "$fa_end" = "ready" ]; then
         echo "[wait] FastAPI 正常但前端未就绪 — 可能前端未构建"
         echo "[wait] API 功能可用: http://127.0.0.1:8000/api/health"
-        exit 2
+        return 2
     fi
-    _auto_error_summary
-    exit 1
-fi
+    show_error_summary
+    return 1
+}
 
 # ══════════════════════════════════════════════════════════════════════
-# MODE: DEFAULT — launch background + auto-wait
+# start_process — launch one-click script in background
 # ══════════════════════════════════════════════════════════════════════
-
-# ── Check for existing instance ──
-if [ -f "$LOCK_FILE" ]; then
-    LOCK_PID=$(cat "$LOCK_FILE" 2>/dev/null || echo "")
-    if [ -n "$LOCK_PID" ] && kill -0 "$LOCK_PID" 2>/dev/null; then
-        echo "[start] 工作台已在启动中 (PID: $LOCK_PID)"
-        local s; s=$(_read_state "status" "unknown")
-        local stg; stg=$(_read_state "stage" "unknown")
-        echo "[start] 当前状态: $s / $stg"
-        echo "[start] 进入等待模式..."
-        echo ""
-        # Fall through to auto-wait below
-        # Don't relaunch — just wait
-        exec bash "$0" --wait
-        exit 0
+start_process() {
+    # ── Check for existing instance ──
+    if [ -f "$LOCK_FILE" ]; then
+        local lock_pid; lock_pid=$(cat "$LOCK_FILE" 2>/dev/null || echo "")
+        if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+            echo "[start] 工作台已在启动中 (PID: $lock_pid)"
+            local s; s=$(_read_state "status" "unknown")
+            local stg; stg=$(_read_state "stage" "unknown")
+            echo "[start] 当前状态: $s / $stg"
+            echo "[start] 进入等待模式..."
+            echo ""
+            return 0
+        fi
+        # Stale lock
+        rm -f "$LOCK_FILE" "$PID_FILE"
     fi
-    # Stale lock
-    rm -f "$LOCK_FILE" "$PID_FILE"
-fi
 
-# ── Clean up stale PID ──
-if [ -f "$PID_FILE" ]; then
-    OLD_PID=$(cat "$PID_FILE" 2>/dev/null || echo "")
-    if [ -n "$OLD_PID" ] && ! kill -0 "$OLD_PID" 2>/dev/null; then
-        echo "[start] 清理过期 PID: $OLD_PID"
-        rm -f "$PID_FILE"
+    # ── Clean up stale PID ──
+    if [ -f "$PID_FILE" ]; then
+        local old_pid; old_pid=$(cat "$PID_FILE" 2>/dev/null || echo "")
+        if [ -n "$old_pid" ] && ! kill -0 "$old_pid" 2>/dev/null; then
+            echo "[start] 清理过期 PID: $old_pid"
+            rm -f "$PID_FILE"
+        fi
     fi
-fi
 
-# ── Check if port 8000 already has a non-project process ──
-if _http_ok "http://127.0.0.1:8000/api/ping" 2; then
-    echo "[start] Port 8000 已有服务运行 — 检查是否为本项目..."
-    local h_json; h_json=$(curl -s --max-time 5 http://127.0.0.1:8000/api/health 2>/dev/null || echo '{}')
-    local h_title; h_title=$(echo "$h_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status','?'))" 2>/dev/null || echo '?')
-    if [ "$h_title" != "?" ] && [ "$h_title" != "" ]; then
-        echo "[start] 检测到本项目 FastAPI 已在运行"
-        echo "[start] Web UI: http://127.0.0.1:8000"
-        echo ""
-        _print_status_detail
-        exit 0
-    else
-        echo "[start] 警告: 端口 8000 被非项目进程占用"
-        echo "[start] 请手动检查: lsof -i :8000 或 ss -tlnp | grep 8000"
-        exit 1
+    # ── Check if port 8000 already has a non-project process ──
+    if _http_ok "http://127.0.0.1:8000/api/ping" 2; then
+        echo "[start] Port 8000 已有服务运行 — 检查是否为本项目..."
+        local h_json; h_json=$(curl -s --max-time 5 http://127.0.0.1:8000/api/health 2>/dev/null || echo '{}')
+        local h_title; h_title=$(echo "$h_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status','?'))" 2>/dev/null || echo '?')
+        if [ "$h_title" != "?" ] && [ "$h_title" != "" ]; then
+            echo "[start] 检测到本项目 FastAPI 已在运行"
+            echo "[start] Web UI: http://127.0.0.1:8000"
+            echo ""
+            show_status
+            exit 0
+        else
+            echo "[start] 警告: 端口 8000 被非项目进程占用"
+            echo "[start] 请手动检查: lsof -i :8000 或 ss -tlnp | grep 8000"
+            exit 1
+        fi
     fi
-fi
 
-# ── Launch one-click script in background ──
-echo "[start] 后台启动英语听说课工作台..."
-echo "[start] 日志: $LOG_DIR/workbench.log"
-echo ""
+    # ── Launch one-click script in background ──
+    echo "[start] 后台启动英语听说课工作台..."
+    echo "[start] 日志: $LOG_DIR/workbench.log"
+    echo ""
 
-nohup bash "$SCRIPT_DIR/one-click-cloudstudio.sh" \
-    &> "$LOG_DIR/workbench.log" &
-BG_PID=$!
+    nohup bash "$SCRIPT_DIR/one-click-cloudstudio.sh" \
+        &> "$LOG_DIR/workbench.log" &
+    local bg_pid=$!
 
-echo "$BG_PID" > "$LOCK_FILE"
-echo "$BG_PID" > "$PID_FILE"
+    echo "$bg_pid" > "$LOCK_FILE"
+    echo "$bg_pid" > "$PID_FILE"
 
-echo "══════════════════════════════════════════════════════"
-echo "  工作台已后台启动 (PID: $BG_PID)"
-echo "  日志: $LOG_DIR/workbench.log"
-echo "══════════════════════════════════════════════════════"
-echo ""
+    echo "══════════════════════════════════════════════════════"
+    echo "  工作台已后台启动 (PID: $bg_pid)"
+    echo "  日志: $LOG_DIR/workbench.log"
+    echo "══════════════════════════════════════════════════════"
+    echo ""
+}
 
-# ── Auto-wait until ready ──
-# Re-invoke self with --wait to reuse waiting logic
-exec bash "$0" --wait
+# ══════════════════════════════════════════════════════════════════════
+# main — parse arguments and dispatch
+# ══════════════════════════════════════════════════════════════════════
+main() {
+    local action="${1:-start}"
+
+    # Normalize action
+    case "$action" in
+        --status|status) action="status" ;;
+        --wait|wait)     action="wait" ;;
+        --start|start|"") action="start" ;;
+        *) echo "用法: bash $0 [--status|--wait]"; exit 1 ;;
+    esac
+
+    mkdir -p "$LOG_DIR"
+
+    case "$action" in
+        status)
+            show_status
+            ;;
+        wait)
+            wait_for_ready
+            ;;
+        start)
+            start_process
+            wait_for_ready
+            ;;
+    esac
+}
+
+main "$@"

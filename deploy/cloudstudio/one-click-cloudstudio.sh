@@ -148,7 +148,7 @@ elif _install_pkg "ffmpeg"; then
     FFMPEG_OK=true; _info "ffmpeg (apt): ok"
 else
     pip install imageio-ffmpeg -q 2>/dev/null && {
-        local IMG_BIN; IMG_BIN=$(python3 -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())" 2>/dev/null || echo "")
+        IMG_BIN=$(python3 -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())" 2>/dev/null || echo "")
         if [ -n "$IMG_BIN" ] && [ -f "$IMG_BIN" ]; then
             mkdir -p "$PROJECT_ROOT/.local/bin"
             ln -sf "$IMG_BIN" "$PROJECT_ROOT/.local/bin/ffmpeg" 2>/dev/null || true
